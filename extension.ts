@@ -26,6 +26,9 @@ const PAST_EVENTS_KEY = "notify-past-events";
 
 const SNOOZE_KEY = "snooze-minutes";
 
+const DESKTOP_SCHEMA = "org.gnome.desktop.interface";
+const CLOCK_FORMAT_KEY = "clock-format";
+
 Gio._promisify(EDataServer.SourceRegistry, "new", "new_finish");
 Gio._promisify(ECal.Client, "connect", "connect_finish");
 Gio._promisify(ECal.Client.prototype, "get_object", "get_object_finish");
@@ -42,6 +45,7 @@ function launchContext(): Gio.AppLaunchContext {
 
 export default class CalendarRemindersExtension extends Extension {
 	private _settings: Gio.Settings | null = null;
+	private _desktopSettings: Gio.Settings | null = null;
 	private _prefs: Gio.Settings | null = null;
 	private _source: MessageTray.Source | null = null;
 	private _sourceDestroyId = 0;
@@ -63,6 +67,7 @@ export default class CalendarRemindersExtension extends Extension {
 		}
 
 		this._settings = new Gio.Settings({ schema_id: EDS_SCHEMA });
+		this._desktopSettings = new Gio.Settings({ schema_id: DESKTOP_SCHEMA });
 		this._prefs = this.getSettings();
 		this._seen = new Set();
 		this._dueScheduled = new Set();
@@ -94,6 +99,7 @@ export default class CalendarRemindersExtension extends Extension {
 			this._settings = null;
 		}
 
+		this._desktopSettings = null;
 		this._prefs = null;
 		if (this._sourceDestroyId) {
 			this._source?.disconnect(this._sourceDestroyId);
@@ -184,9 +190,14 @@ export default class CalendarRemindersExtension extends Extension {
 	}
 
 	private _show(reminder: Reminder): void {
+		const desktopSettings = this._desktopSettings;
+		if (!desktopSettings) return;
+		const timeFormat = desktopSettings.get_string(CLOCK_FORMAT_KEY) ===
+		"24h" ? "%R" : "%-I:%M %p";
+
 		const at = (t: number) => GLib.DateTime.new_from_unix_local(t);
 		const day = (d: GLib.DateTime) => d.format("%a %-e %b");
-		const time = (d: GLib.DateTime) => d.format("%H:%M");
+		const time = (d: GLib.DateTime) => d.format(timeFormat);
 		const start = at(reminder.start);
 		const end = reminder.allDay ? at(reminder.end).add_days(-1)! : at(reminder.end);
 		const sameDay = start.format("%F") === end.format("%F");
